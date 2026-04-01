@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.deepanshumishraa.airgrab</string>
+    <key>CFBundleName</key>
+    <string>airgrab</string>
+    <key>NSCameraUsageDescription</key>
+    <string>airgrab uses the camera to detect hand gestures for window control</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>airgrab uses the microphone to listen for clap activation and deactivation</string>
+</dict>
+</plist>

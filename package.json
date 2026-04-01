@@ -1,0 +1,43 @@
+{
+  "name": "airgrab",
+  "version": "0.0.2",
+  "description": "Hand- and gaze-driven window movement for macOS",
+  "bin": {
+    "airgrab": "bin/airgrab"
+  },
+  "files": [
+    "bin/airgrab",
+    "bin/airgrab-bin"
+  ],
+  "scripts": {
+    "build:npm-binary": "./scripts/build-npm-binary.sh",
+    "prepack": "./scripts/build-npm-binary.sh",
+    "publish:npm": "./scripts/publish-npm.sh",
+    "sync-version": "./scripts/sync-version.sh",
+    "update:npm": "./scripts/update-npm.sh",
+    "version": "./scripts/sync-version.sh",
+    "build": "npm run sync-version && swift build -c release"
+  },
+  "keywords": [
+    "window-management",
+    "window-movement",
+    "gesture-control",
+    "hand-tracking",
+    "gaze-tracking",
+    "accessibility",
+    "macos",
+    "webcam",
+    "swift",
+    "vision"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "author": "Deepanshu Mishra",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:DeepanshuMishraa/airgrab.git"
+  },
+  "homepage": "https://github.com/DeepanshuMishraa/airgrab"
+}

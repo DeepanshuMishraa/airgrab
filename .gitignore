@@ -1,0 +1,5 @@
+.build/
+bin/gazectl-bin
+node_modules/
+.venv/
+face_landmarker.task
