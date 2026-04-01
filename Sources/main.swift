@@ -276,6 +276,8 @@ var gazeMonitor = MonitorManager.focusedMonitor() ?? MonitorManager.currentMonit
 var lastAppliedGazeMonitor = gazeMonitor
 let switchCooldown: TimeInterval = 0.5
 var lastSwitchTime = Date.distantPast
+var lastMonitorTransferTime = Date.distantPast
+let monitorTransferCooldown: TimeInterval = 0.3
 
 var isGrabbingWindow = false
 var isInteractionActive = false
@@ -297,6 +299,9 @@ var lastObservedGazePoint: CGPoint?
 var smoothedGazePoint: CGPoint?
 var gazeStableFrames = 0
 var gazePointMonitorID: Int?
+var pendingMonitorTarget: Int?
+var pendingMonitorFrames = 0
+let requiredMonitorSwitchFrames = 3
 
 while running {
     if clapDetector.consumeClapEvent() {
@@ -305,6 +310,8 @@ while running {
         openFrames = 0
         grabDetected = false
         lastObservedHandPosition = nil
+        pendingMonitorTarget = nil
+        pendingMonitorFrames = 0
 
         if isInteractionActive {
             CLI.printGesture("CLAP detected - ACTIVATED")
@@ -347,7 +354,10 @@ while running {
         )
 
         if gazePointMonitorID != target {
-            gazeStableFrames = 0
+            // Don't reset gaze stability when grabbing - allows smoother cross-monitor grabs
+            if !isGrabbingWindow {
+                gazeStableFrames = 0
+            }
             lastObservedGazePoint = nil
             smoothedGazePoint = lookedAtPoint
             gazePointMonitorID = target
@@ -355,7 +365,7 @@ while running {
 
         if let lookedAtPoint {
             if let lastPoint = lastObservedGazePoint {
-                gazeStableFrames = normalizedDistance(lookedAtPoint, lastPoint) <= 0.03
+                gazeStableFrames = normalizedDistance(lookedAtPoint, lastPoint) <= 0.04
                     ? gazeStableFrames + 1
                     : 0
             }
@@ -384,6 +394,7 @@ while running {
 
         if gazeMonitor != lastAppliedGazeMonitor {
             if isGrabbingWindow {
+                // During grab, just update tracking but don't apply focus transitions
                 lastAppliedGazeMonitor = target
             } else {
                 let transition = MonitorManager.transition(
@@ -461,11 +472,6 @@ while running {
                 }
 
                 if pinchFrames >= requiredPinchFrames {
-                    if !grabDetected {
-                        CLI.printGesture("GRAB detected")
-                        grabDetected = true
-                    }
-
                     let targetMonitor = gazeMonitor ?? MonitorManager.currentMonitor()
 
                     if let targetMonitor,
@@ -475,6 +481,10 @@ while running {
                         handPosition: currentHandPos,
                         gazePosition: smoothedGazePoint
                        ) {
+                        if !grabDetected {
+                            CLI.printGesture("GRAB detected")
+                            grabDetected = true
+                        }
                         isGrabbingWindow = true
                         wasPinchDuringGrab = true
                         pinchFrames = 0
@@ -484,14 +494,17 @@ while running {
                             CLI.debug("Window on \(targetName) attached to hand via gaze target")
                         }
                         WindowHighlight.setColor(grabbed: true)
-                    } else if config.debug {
-                        let targetName = targetMonitor.flatMap { id in
-                            monitors.first { $0.id == id }?.name ?? "\(id)"
-                        } ?? "unknown monitor"
-                        let gazeText = smoothedGazePoint.map {
-                            " at gaze (\(String(format: "%.2f", $0.x)), \(String(format: "%.2f", $0.y)))"
-                        } ?? ""
-                        CLI.debug("Grab pose matched, but no window was found on \(targetName)\(gazeText)")
+                    } else {
+                        if !grabDetected {
+                            grabDetected = true
+                            let targetName = targetMonitor.flatMap { id in
+                                monitors.first { $0.id == id }?.name ?? "\(id)"
+                            } ?? "unknown monitor"
+                            let gazeText = smoothedGazePoint.map {
+                                " at gaze (\(String(format: "%.2f", $0.x)), \(String(format: "%.2f", $0.y)))"
+                            } ?? ""
+                            CLI.warning("Grab pose matched, but no window was found on \(targetName)\(gazeText)")
+                        }
                     }
                 }
             } else {
@@ -502,9 +515,28 @@ while running {
                     wasPinchDuringGrab = false
                 }
 
+                // Debounce monitor transfers during drag to prevent jittering
+                var effectiveTargetMonitor = windowManager.monitorContainingGrabbedWindow()
+                if let gazeMonitor, gazeMonitor != effectiveTargetMonitor {
+                    if pendingMonitorTarget == gazeMonitor {
+                        pendingMonitorFrames += 1
+                        if pendingMonitorFrames >= requiredMonitorSwitchFrames {
+                            effectiveTargetMonitor = gazeMonitor
+                            pendingMonitorTarget = nil
+                            pendingMonitorFrames = 0
+                        }
+                    } else {
+                        pendingMonitorTarget = gazeMonitor
+                        pendingMonitorFrames = 1
+                    }
+                } else {
+                    pendingMonitorTarget = nil
+                    pendingMonitorFrames = 0
+                }
+
                 windowManager.moveWindowByHand(
                     handPosition: currentHandPos,
-                    targetMonitorID: gazeMonitor
+                    targetMonitorID: effectiveTargetMonitor
                 )
 
                 if isOpenGesture
@@ -525,6 +557,8 @@ while running {
                     pinchFrames = 0
                     openFrames = 0
                     grabDetected = false
+                    pendingMonitorTarget = nil
+                    pendingMonitorFrames = 0
                     lastReleaseTime = Date()
                     CLI.printGesture("RELEASE detected")
                     WindowHighlight.setColor(grabbed: false)
@@ -539,6 +573,8 @@ while running {
             pinchFrames = 0
             openFrames = 0
             grabDetected = false
+            pendingMonitorTarget = nil
+            pendingMonitorFrames = 0
             lastReleaseTime = Date()
             CLI.printGesture("HAND lost - released")
             WindowHighlight.setColor(grabbed: false)

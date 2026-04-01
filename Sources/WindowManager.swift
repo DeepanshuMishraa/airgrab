@@ -21,14 +21,18 @@ final class WindowManager {
 
     func grabWindow(onMonitor monitorID: Int, handPosition: CGPoint, gazePosition: CGPoint? = nil) -> Bool {
         guard let screen = screen(forMonitor: monitorID) else {
+            print("[DEBUG] No screen found for monitor \(monitorID)")
             return false
         }
 
         let selectionPosition = gazePosition ?? handPosition
         let targetPoint = screenPoint(for: selectionPosition, in: screen.frame)
+        
+        print("[DEBUG] Target point: \(targetPoint), screen frame: \(screen.frame), scale: \(screen.backingScaleFactor)")
 
         guard let window = window(at: targetPoint, onMonitor: monitorID),
               let position = windowPosition(window) else {
+            print("[DEBUG] No window found at point \(targetPoint) on monitor \(monitorID)")
             return false
         }
 
@@ -188,9 +192,13 @@ final class WindowManager {
             [.optionOnScreenOnly, .excludeDesktopElements],
             kCGNullWindowID
         ) as? [[String: Any]] else {
+            print("[DEBUG] Failed to get window list")
             return nil
         }
 
+        print("[DEBUG] Checking \(windowList.count) windows for point \(point) on monitor \(monitorID)")
+        var candidateCount = 0
+        
         for windowInfo in windowList {
             guard let layer = windowInfo[kCGWindowLayer as String] as? Int,
                   layer == 0,
@@ -202,23 +210,46 @@ final class WindowManager {
             }
 
             var rect = CGRect.zero
-            guard CGRectMakeWithDictionaryRepresentation(boundsDict as CFDictionary, &rect),
-                  rect.width > 60,
-                  rect.height > 40,
-                  rect.contains(point) else {
+            guard CGRectMakeWithDictionaryRepresentation(boundsDict as CFDictionary, &rect) else {
                 continue
             }
+            
+            let ownerName = windowInfo[kCGWindowOwnerName as String] as? String ?? "unknown"
+            let windowName = windowInfo[kCGWindowName as String] as? String ?? "untitled"
+            
+            // Check size filter
+            if rect.width <= 60 || rect.height <= 40 {
+                continue
+            }
+            
+            // Check if point is in rect
+            let containsPoint = rect.contains(point)
+            if !containsPoint {
+                continue
+            }
+            
+            candidateCount += 1
+            print("[DEBUG] Candidate \(candidateCount): \(ownerName) - \(windowName)")
+            print("[DEBUG]   rect: \(rect), contains point: \(containsPoint)")
 
             let midpoint = CGPoint(x: rect.midX, y: rect.midY)
-            guard monitorContaining(point: midpoint) == monitorID else {
+            let monitorAtMidpoint = monitorContaining(point: midpoint)
+            print("[DEBUG]   midpoint: \(midpoint), monitor: \(monitorAtMidpoint ?? -1), target: \(monitorID)")
+            
+            guard monitorAtMidpoint == monitorID else {
+                print("[DEBUG]   REJECTED: midpoint on different monitor")
                 continue
             }
 
             if let axWindow = accessibilityWindow(pid: ownerPID, near: rect) {
+                print("[DEBUG]   FOUND via accessibility API")
                 return axWindow
+            } else {
+                print("[DEBUG]   REJECTED: accessibility API failed")
             }
         }
-
+        
+        print("[DEBUG] No valid window found. Checked \(candidateCount) candidates.")
         return nil
     }
 
@@ -326,7 +357,7 @@ final class WindowManager {
               let frame = windowFrame(window),
               let screen = screenContaining(frame),
               let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else {
-            return nil
+            return currentTargetMonitorID
         }
 
         return Int(screenNumber)
@@ -357,7 +388,7 @@ final class WindowManager {
         grabStartWindowPosition = newPosition
         currentWindowPosition = newPosition
         currentTargetMonitorID = monitorID
-        lastDragHandPosition = nil
+        // Don't reset lastDragHandPosition - keep it to avoid jumps on next frame
     }
 
     private func updateOverlay(handPosition _: CGPoint, fallbackScreen: NSScreen? = nil) {

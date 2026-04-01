@@ -206,7 +206,7 @@ enum Calibration {
         return calibration
     }
 
-    private static let hysteresis = 0.25
+    private static let hysteresis = 0.35
 
     static func targetMonitor(
         yaw: Double, pitch: Double,
